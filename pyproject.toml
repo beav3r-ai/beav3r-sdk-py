@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beav3r-sdk"
+version = "0.1.3"
+description = "Python SDK for Beav3r approval and relay flows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Beav3r" }
+]
+dependencies = [
+  "PyNaCl>=1.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/beav3r-ai/beav3r-sdk-py"
+Source = "https://github.com/beav3r-ai/beav3r-sdk-py"
+Issues = "https://github.com/beav3r-ai/beav3r-sdk-py/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
