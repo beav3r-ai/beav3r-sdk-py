@@ -227,6 +227,207 @@ class Beav3rClientTests(unittest.TestCase):
         self.assertEqual(result["actionHash"], "hash_timeout")
         self.assertIn("pendingForMs", result)
 
+    def test_guard_and_wait_attaches_execution_authorization_when_audience_is_set(self) -> None:
+        requests: list[tuple[str, str, dict[str, object]]] = []
+
+        def transport(url: str, method: str, headers: dict[str, str], body: bytes | None):
+            payload = json.loads((body or b"{}").decode("utf-8"))
+            requests.append((url, method, payload))
+            if url.endswith("/actions/request"):
+                return {
+                    "status": 200,
+                    "headers": {},
+                    "text": json.dumps(
+                        {
+                            "status": "pending",
+                            "actionId": "act_exec_auth",
+                            "actionHash": "hash_exec_auth",
+                            "reason": "manual review",
+                            "evaluation": {
+                                "decision": "require_approval",
+                                "severity": "elevated",
+                                "reason": "manual review",
+                            },
+                        }
+                    ),
+                }
+            if url.endswith("/actions/act_exec_auth/status"):
+                return {
+                    "status": 200,
+                    "headers": {},
+                    "text": json.dumps({"status": "approved", "actionId": "act_exec_auth"}),
+                }
+            if url.endswith("/actions/act_exec_auth/execution-authorization"):
+                return {
+                    "status": 200,
+                    "headers": {},
+                    "text": json.dumps(
+                        {
+                            "payload": {
+                                "artifactId": "artifact_1",
+                                "actionId": "act_exec_auth",
+                                "actionHash": "hash_exec_auth",
+                                "decision": "allow",
+                                "issuedAt": 1700000000,
+                                "expiresAt": 1700000060,
+                                "audience": "executor-prod",
+                                "keyId": "kid_1",
+                                "version": "v1",
+                            },
+                            "signature": "sig_1",
+                            "algorithm": "ed25519",
+                            "keyId": "kid_1",
+                        }
+                    ),
+                }
+            raise AssertionError(f"unexpected request: {url}")
+
+        client = Beav3r(base_url="http://beav3r.test", transport=transport)
+        result = client.guard_and_wait(
+            {"actionType": "transfer", "payload": {"amount": 1}, "attributes": {"amount": 1}},
+            poll_interval_ms=1,
+            timeout_ms=50,
+            audience="executor-prod",
+        )
+
+        self.assertEqual(result["status"], "approved")
+        self.assertEqual(result["actionId"], "act_exec_auth")
+        self.assertIn("executionAuthorizationArtifact", result)
+        mint_calls = [
+            (url, method, payload)
+            for (url, method, payload) in requests
+            if url.endswith("/actions/act_exec_auth/execution-authorization")
+        ]
+        self.assertEqual(len(mint_calls), 1)
+        self.assertEqual(mint_calls[0][1], "POST")
+        self.assertEqual(mint_calls[0][2], {"audience": "executor-prod"})
+
+    def test_mint_execution_authorization_validates_inputs(self) -> None:
+        client = Beav3r(base_url="http://beav3r.test", transport=lambda *args: {})
+
+        with self.assertRaisesRegex(
+            ValueError, "mint_execution_authorization requires a non-empty actionId"
+        ):
+            client.mint_execution_authorization({"actionId": " ", "audience": "exec"})
+
+        with self.assertRaisesRegex(
+            ValueError, "mint_execution_authorization requires a non-empty audience"
+        ):
+            client.mint_execution_authorization({"actionId": "act_1", "audience": " "})
+
+    def test_redeem_execution_authorization_posts_redemption_request(self) -> None:
+        requests: list[tuple[str, str, dict[str, object]]] = []
+        artifact = {
+            "payload": {
+                "artifactId": "artifact_2",
+                "actionId": "act_exec_auth",
+                "actionHash": "hash_exec_auth",
+                "decision": "allow",
+                "issuedAt": 1700000000,
+                "expiresAt": 1700000060,
+                "audience": "executor-prod",
+                "keyId": "kid_1",
+                "version": "v1",
+            },
+            "signature": "sig_2",
+            "algorithm": "ed25519",
+            "keyId": "kid_1",
+        }
+
+        def transport(url: str, method: str, headers: dict[str, str], body: bytes | None):
+            payload = json.loads((body or b"{}").decode("utf-8"))
+            requests.append((url, method, payload))
+            return {
+                "status": 200,
+                "headers": {},
+                "text": json.dumps(
+                    {
+                        "status": "redeemed",
+                        "artifactId": "artifact_2",
+                        "actionId": "act_exec_auth",
+                        "redeemedAt": 1700000001,
+                    }
+                ),
+            }
+
+        client = Beav3r(base_url="http://beav3r.test", transport=transport)
+        result = client.redeem_execution_authorization(
+            {
+                "actionId": "act_exec_auth",
+                "artifact": artifact,
+                "audience": "executor-prod",
+                "actionHash": "hash_exec_auth",
+            }
+        )
+
+        self.assertEqual(result["status"], "redeemed")
+        self.assertEqual(result["artifactId"], "artifact_2")
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0][0],
+            "http://beav3r.test/actions/act_exec_auth/execution-authorization/redeem",
+        )
+        self.assertEqual(requests[0][1], "POST")
+        self.assertEqual(
+            requests[0][2],
+            {
+                "artifact": artifact,
+                "audience": "executor-prod",
+                "actionHash": "hash_exec_auth",
+            },
+        )
+
+    def test_redeem_execution_authorization_validates_inputs(self) -> None:
+        client = Beav3r(base_url="http://beav3r.test", transport=lambda *args: {})
+
+        with self.assertRaisesRegex(
+            ValueError, "redeem_execution_authorization requires a non-empty actionId"
+        ):
+            client.redeem_execution_authorization(
+                {
+                    "actionId": " ",
+                    "artifact": {"payload": {}, "signature": ""},
+                    "audience": "executor",
+                    "actionHash": "hash_1",
+                }
+            )
+
+        with self.assertRaisesRegex(
+            ValueError, "redeem_execution_authorization requires an artifact"
+        ):
+            client.redeem_execution_authorization(
+                {
+                    "actionId": "act_1",
+                    "artifact": None,
+                    "audience": "executor",
+                    "actionHash": "hash_1",
+                }
+            )
+
+        with self.assertRaisesRegex(
+            ValueError, "redeem_execution_authorization requires a non-empty audience"
+        ):
+            client.redeem_execution_authorization(
+                {
+                    "actionId": "act_1",
+                    "artifact": {"payload": {}, "signature": ""},
+                    "audience": " ",
+                    "actionHash": "hash_1",
+                }
+            )
+
+        with self.assertRaisesRegex(
+            ValueError, "redeem_execution_authorization requires a non-empty actionHash"
+        ):
+            client.redeem_execution_authorization(
+                {
+                    "actionId": "act_1",
+                    "artifact": {"payload": {}, "signature": ""},
+                    "audience": "executor",
+                    "actionHash": " ",
+                }
+            )
+
     def test_get_action_status_with_action_hash_uses_query(self) -> None:
         seen: dict[str, object] = {}
 

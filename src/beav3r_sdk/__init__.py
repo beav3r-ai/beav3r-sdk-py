@@ -1,8 +1,51 @@
 from .client import Beav3r, Beav3rDeniedError, BeaverClient, BeaverDeniedError
+from .execution_authorization import (
+    canonicalize,
+    hash_action,
+    is_valid_execution_authorization,
+    isValidExecutionAuthorization,
+    normalize_execution_authorization_action,
+    verify_execution_authorization,
+    verifyExecutionAuthorization,
+)
+from .onchain import (
+    compute_onchain_action_hash,
+    compute_onchain_authorization_digest,
+    encode_execute_with_auth_calldata,
+    prepare_execute_with_auth_call,
+    prepare_onchain_execution,
+    verify_onchain_authorization,
+    # camelCase aliases
+    computeOnchainActionHash,
+    computeOnchainAuthorizationDigest,
+    encodeExecuteWithAuthCalldata,
+    prepareExecuteWithAuthCall,
+    prepareOnchainExecution,
+    verifyOnchainAuthorization,
+)
 
 __all__ = [
     "Beav3r",
     "Beav3rDeniedError",
     "BeaverClient",
     "BeaverDeniedError",
+    "canonicalize",
+    "hash_action",
+    "normalize_execution_authorization_action",
+    "verify_execution_authorization",
+    "verifyExecutionAuthorization",
+    "is_valid_execution_authorization",
+    "isValidExecutionAuthorization",
+    "compute_onchain_action_hash",
+    "compute_onchain_authorization_digest",
+    "verify_onchain_authorization",
+    "prepare_execute_with_auth_call",
+    "encode_execute_with_auth_calldata",
+    "prepare_onchain_execution",
+    "computeOnchainActionHash",
+    "computeOnchainAuthorizationDigest",
+    "verifyOnchainAuthorization",
+    "prepareExecuteWithAuthCall",
+    "encodeExecuteWithAuthCalldata",
+    "prepareOnchainExecution",
 ]
