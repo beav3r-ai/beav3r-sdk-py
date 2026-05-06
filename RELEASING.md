@@ -8,7 +8,7 @@ This document is for package maintainers.
 python3 -m pip install -U build twine
 python3 -m build
 python3 -m twine check dist/*
-python3 -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
 ## Publish
